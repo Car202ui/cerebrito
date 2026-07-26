@@ -26,6 +26,30 @@ header p {
   font-size: 1.15rem;
 }
 
+.nav {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.nav button {
+  background: #16181f;
+  color: #bbb;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.nav button.activo {
+  background: #6c8cff;
+  color: #fff;
+  border-color: #6c8cff;
+}
+.nav button:hover:not(.activo) {
+  border-color: #6c8cff;
+}
+
 .error {
   background: #3a1212;
   border: 1px solid #a33;

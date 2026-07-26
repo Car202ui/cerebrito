@@ -25,6 +25,7 @@ function App() {
   const [urlScan, setUrlScan] = useState("");
   const [escaneando, setEscaneando] = useState(false);
   const [scan, setScan] = useState(null);
+  const [vista, setVista] = useState("analisis"); // analisis | seguridad | conocimiento | dashboards
 
   useEffect(() => { cargar(); cargarConocimiento(); }, []);
 
@@ -165,8 +166,24 @@ function App() {
         <p>Sube cualquier archivo · ShaddAI lo razona por ti</p>
       </header>
 
+      <nav className="nav">
+        <button className={vista === "analisis" ? "activo" : ""} onClick={() => setVista("analisis")}>
+          📊 Análisis
+        </button>
+        <button className={vista === "seguridad" ? "activo" : ""} onClick={() => setVista("seguridad")}>
+          🛡️ Seguridad
+        </button>
+        <button className={vista === "conocimiento" ? "activo" : ""} onClick={() => setVista("conocimiento")}>
+          🧠 Conocimiento
+        </button>
+        <button className={vista === "dashboards" ? "activo" : ""} onClick={() => setVista("dashboards")}>
+          📈 Dashboards
+        </button>
+      </nav>
+
       {error && <div className="error">{error}</div>}
 
+      {vista === "analisis" && <>
       <section className="card">
         <h2>Subir archivo</h2>
         <input type="file" onChange={subirArchivo} disabled={subiendo} />
@@ -294,7 +311,9 @@ function App() {
           )}
         </section>
       )}
+      </>}
 
+      {vista === "seguridad" && (
       <section className="card">
         <h2>🛡️ Inspector de seguridad</h2>
         <p className="hint">
@@ -356,7 +375,9 @@ function App() {
           </div>
         )}
       </section>
+      )}
 
+      {vista === "conocimiento" && (
       <section className="card">
         <h2>🧠 Base de conocimiento ({conocimiento.length})</h2>
         <p className="hint">Análisis que ShaddAI recordó de tus proyectos.</p>
@@ -378,6 +399,29 @@ function App() {
           </div>
         ))}
       </section>
+      )}
+
+      {vista === "dashboards" && (
+      <section className="card">
+        <h2>📈 Dashboards (Metabase)</h2>
+        <p className="hint">
+          Dashboards profesionales sobre tus datos, conectados a la base cerebrito.
+          Requiere Metabase corriendo (start-metabase.bat).
+        </p>
+        <a className="btn-ia" href="http://localhost:3000" target="_blank" rel="noreferrer"
+           style={{ display: "inline-block", textDecoration: "none", marginBottom: "1rem" }}>
+          🔗 Abrir Metabase en pestaña nueva
+        </a>
+        <div className="metabase-frame">
+          <iframe title="Metabase" src="http://localhost:3000"
+                  style={{ width: "100%", height: "600px", border: "1px solid #333", borderRadius: 8 }} />
+        </div>
+        <p className="hint">
+          Si el recuadro sale en blanco, usá el botón de arriba (Metabase bloquea la
+          incrustación directa por seguridad; se puede habilitar por dashboard más adelante).
+        </p>
+      </section>
+      )}
     </div>
   );
 }

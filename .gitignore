@@ -24,3 +24,6 @@ Thumbs.db
 
 # venv de Python
 services/*/venv/
+
+# CSVs subidos
+services/*/uploads/

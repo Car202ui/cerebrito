@@ -1,9 +1,10 @@
 """
-cerebrito · servicio CORE
-Base de conocimiento + ingesta de CSV.
+ShaddAI · servicio CORE
+Base de conocimiento + ingesta de CSV + análisis de datos.
 FastAPI + SQLAlchemy + MySQL.
 """
 import io
+import os
 import pandas as pd
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,10 +14,14 @@ from sqlalchemy.orm import Session
 from db import engine, Base, get_db
 import models
 
+# Carpeta donde se guardan los CSV subidos (para poder re-analizarlos)
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 # Crea las tablas si no existen
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="cerebrito · core", version="0.1.0")
+app = FastAPI(title="ShaddAI · core", version="0.2.0")
 
 # Permitir que el frontend (React) llame a este servicio
 app.add_middleware(
@@ -85,6 +90,12 @@ async def subir_csv(file: UploadFile = File(...), db: Session = Depends(get_db))
     db.add(dataset)
     db.commit()
     db.refresh(dataset)
+
+    # Guardar el CSV completo en disco para poder analizarlo después
+    ruta = os.path.join(UPLOAD_DIR, f"{dataset.id}.csv")
+    with open(ruta, "wb") as f:
+        f.write(contenido)
+
     return {
         "id": dataset.id,
         "nombre_archivo": dataset.nombre_archivo,
@@ -97,3 +108,52 @@ async def subir_csv(file: UploadFile = File(...), db: Session = Depends(get_db))
 @app.get("/datasets")
 def listar_datasets(db: Session = Depends(get_db)):
     return db.query(models.Dataset).order_by(models.Dataset.id.desc()).all()
+
+
+def _cargar_df(dataset_id: int) -> pd.DataFrame:
+    """Carga el CSV guardado de un dataset o lanza 404."""
+    ruta = os.path.join(UPLOAD_DIR, f"{dataset_id}.csv")
+    if not os.path.exists(ruta):
+        raise HTTPException(404, "No hay archivo guardado para ese dataset")
+    return pd.read_csv(ruta)
+
+
+@app.get("/datasets/{dataset_id}/analytics")
+def analizar_dataset(dataset_id: int):
+    """Devuelve estadísticas listas para graficar y tomar decisiones."""
+    df = _cargar_df(dataset_id)
+
+    numericas = df.select_dtypes(include="number").columns.tolist()
+    categoricas = df.select_dtypes(exclude="number").columns.tolist()
+
+    # Resumen por columna numérica (para tarjetas y gráficos)
+    resumen_numerico = []
+    for col in numericas:
+        serie = df[col].dropna()
+        if serie.empty:
+            continue
+        resumen_numerico.append({
+            "columna": col,
+            "suma": float(serie.sum()),
+            "promedio": float(serie.mean()),
+            "minimo": float(serie.min()),
+            "maximo": float(serie.max()),
+        })
+
+    # Conteo de categorías (top 10) para gráficos de barras
+    resumen_categorico = []
+    for col in categoricas:
+        conteo = df[col].value_counts().head(10)
+        resumen_categorico.append({
+            "columna": col,
+            "datos": [{"nombre": str(k), "valor": int(v)} for k, v in conteo.items()],
+        })
+
+    return {
+        "filas": len(df),
+        "columnas": list(df.columns),
+        "columnas_numericas": numericas,
+        "columnas_categoricas": categoricas,
+        "resumen_numerico": resumen_numerico,
+        "resumen_categorico": resumen_categorico,
+    }

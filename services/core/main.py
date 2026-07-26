@@ -16,6 +16,7 @@ import models
 import ai
 import ingest
 import security
+import rag
 
 # Carpeta donde se guardan los archivos subidos (para poder re-analizarlos)
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
@@ -332,6 +333,41 @@ def borrar_analisis(analisis_id: int, db: Session = Depends(get_db)):
     db.delete(registro)
     db.commit()
     return {"ok": True}
+
+
+# ---------- Proyectos (RAG: sube un proyecto entero y pregúntale) ----------
+@app.post("/rag/upload")
+async def subir_proyecto(file: UploadFile = File(...)):
+    """Sube un proyecto comprimido (.zip), lo indexa y lo deja listo para preguntar."""
+    nombre = file.filename or "proyecto.zip"
+    if not nombre.lower().endswith(".zip"):
+        raise HTTPException(400, "Subí el proyecto comprimido en un archivo .zip")
+    contenido = await file.read()
+    try:
+        info = rag.indexar_zip(contenido, nombre.rsplit(".", 1)[0])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"No se pudo indexar el proyecto: {e}")
+    return info
+
+
+@app.get("/rag/proyectos")
+def listar_proyectos_rag():
+    return rag.listar_proyectos()
+
+
+class PreguntaProyectoIn(BaseModel):
+    pregunta: str
+
+
+@app.post("/rag/{proyecto_id}/ask")
+def preguntar_proyecto(proyecto_id: str, payload: PreguntaProyectoIn):
+    """Pregunta sobre un proyecto: busca los fragmentos relevantes y razona."""
+    fragmentos = rag.buscar_fragmentos(proyecto_id, payload.pregunta)
+    respuesta = ai.responder_proyecto(payload.pregunta, fragmentos)
+    archivos = sorted({f["archivo"] for f in fragmentos})
+    return {"respuesta": respuesta, "archivos_consultados": archivos}
 
 
 # ---------- Inspector de seguridad (defensivo) ----------

@@ -25,9 +25,69 @@ function App() {
   const [urlScan, setUrlScan] = useState("");
   const [escaneando, setEscaneando] = useState(false);
   const [scan, setScan] = useState(null);
-  const [vista, setVista] = useState("analisis"); // analisis | seguridad | conocimiento | dashboards
+  const [vista, setVista] = useState("analisis"); // analisis | proyectos | seguridad | conocimiento | dashboards
+  const [proyectosRag, setProyectosRag] = useState([]);
+  const [proyectoActivo, setProyectoActivo] = useState(null);
+  const [indexando, setIndexando] = useState(false);
+  const [preguntaProy, setPreguntaProy] = useState("");
+  const [respuestaProy, setRespuestaProy] = useState("");
+  const [archivosConsultados, setArchivosConsultados] = useState([]);
+  const [pensandoProy, setPensandoProy] = useState(false);
 
-  useEffect(() => { cargar(); cargarConocimiento(); }, []);
+  useEffect(() => { cargar(); cargarConocimiento(); cargarProyectos(); }, []);
+
+  async function cargarProyectos() {
+    try {
+      setProyectosRag(await fetch(`${CORE}/rag/proyectos`).then((r) => r.json()));
+    } catch { /* silencioso */ }
+  }
+
+  async function subirProyecto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      setError("Comprimí la carpeta del proyecto en un .zip y subí ese archivo.");
+      return;
+    }
+    setIndexando(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${CORE}/rag/upload`, { method: "POST", body: form });
+      if (!res.ok) throw new Error((await res.json()).detail || "Error");
+      const info = await res.json();
+      await cargarProyectos();
+      setProyectoActivo(info);
+      setRespuestaProy("");
+    } catch (err) {
+      setError("No se pudo indexar el proyecto: " + err.message);
+    } finally {
+      setIndexando(false);
+      e.target.value = "";
+    }
+  }
+
+  async function preguntarProyecto(e) {
+    e.preventDefault();
+    if (!preguntaProy.trim() || !proyectoActivo) return;
+    setPensandoProy(true);
+    setRespuestaProy("");
+    setArchivosConsultados([]);
+    try {
+      const r = await fetch(`${CORE}/rag/${proyectoActivo.id}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pregunta: preguntaProy }),
+      }).then((r) => r.json());
+      setRespuestaProy(r.respuesta);
+      setArchivosConsultados(r.archivos_consultados || []);
+    } catch {
+      setError("ShaddAI no pudo responder sobre el proyecto.");
+    } finally {
+      setPensandoProy(false);
+    }
+  }
 
   async function escanearSeguridad(e) {
     e.preventDefault();
@@ -170,6 +230,9 @@ function App() {
         <button className={vista === "analisis" ? "activo" : ""} onClick={() => setVista("analisis")}>
           📊 Análisis
         </button>
+        <button className={vista === "proyectos" ? "activo" : ""} onClick={() => setVista("proyectos")}>
+          📁 Proyectos
+        </button>
         <button className={vista === "seguridad" ? "activo" : ""} onClick={() => setVista("seguridad")}>
           🛡️ Seguridad
         </button>
@@ -308,6 +371,63 @@ function App() {
                 {contenido.longitud > contenido.preview.length ? "\n\n… (recortado)" : ""}
               </pre>
             </>
+          )}
+        </section>
+      )}
+      </>}
+
+      {vista === "proyectos" && <>
+      <section className="card">
+        <h2>📁 Subir un proyecto completo</h2>
+        <p className="hint">
+          Comprimí la carpeta de tu proyecto en un <strong>.zip</strong> y subilo.
+          ShaddAI lo indexa completo y podés preguntarle cualquier cosa sobre el código.
+        </p>
+        <input type="file" accept=".zip" onChange={subirProyecto} disabled={indexando} />
+        {indexando && <p className="sub">Indexando el proyecto… (puede tardar según el tamaño)</p>}
+      </section>
+
+      <section className="card">
+        <h2>Proyectos indexados ({proyectosRag.length})</h2>
+        <ul className="lista-datasets">
+          {proyectosRag.map((p) => (
+            <li key={p.id}>
+              <span>📁 {p.nombre} — {p.archivos} archivos · {p.fragmentos} fragmentos</span>
+              <button onClick={() => { setProyectoActivo(p); setRespuestaProy(""); }}>
+                Preguntar
+              </button>
+            </li>
+          ))}
+        </ul>
+        {proyectosRag.length === 0 && <p className="sub">Todavía no subiste ningún proyecto.</p>}
+      </section>
+
+      {proyectoActivo && (
+        <section className="card">
+          <h2>💬 Preguntar sobre: {proyectoActivo.nombre}</h2>
+          <form onSubmit={preguntarProyecto} className="ia-form">
+            <input
+              type="text"
+              placeholder="Ej: ¿qué hace el módulo de seguridad? ¿dónde se conecta a la base de datos?"
+              value={preguntaProy}
+              onChange={(e) => setPreguntaProy(e.target.value)}
+              disabled={pensandoProy}
+            />
+            <button type="submit" disabled={pensandoProy}>
+              {pensandoProy ? "Pensando…" : "Preguntar"}
+            </button>
+          </form>
+          {archivosConsultados.length > 0 && (
+            <p className="sub">📎 Archivos consultados: {archivosConsultados.join(", ")}</p>
+          )}
+          {respuestaProy && (
+            <div className="ia-respuesta">
+              {respuestaProy}
+              <button className="btn-guardar"
+                      onClick={() => guardarConocimiento(respuestaProy)}>
+                💾 Guardar en base de conocimiento
+              </button>
+            </div>
           )}
         </section>
       )}

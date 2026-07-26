@@ -11,18 +11,33 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
 
 
-def _chat(prompt: str) -> str:
-    """Envía un prompt a Ollama y devuelve la respuesta en texto."""
+def _chat(prompt: str, num_predict: int = 500) -> str:
+    """Envía un prompt a Ollama y devuelve la respuesta en texto.
+
+    - timeout amplio (la IA en CPU es lenta con textos largos).
+    - keep_alive: mantiene el modelo cargado en memoria 30 min → la
+      2da consulta en adelante es mucho más rápida (evita recargar).
+    - num_predict: limita cuánto genera → no se cuelga generando de más.
+    """
     try:
         resp = requests.post(
             f"{OLLAMA_URL}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            timeout=120,
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "keep_alive": "30m",
+                "options": {"num_predict": num_predict, "temperature": 0.3},
+            },
+            timeout=600,
         )
         resp.raise_for_status()
         return resp.json().get("response", "").strip()
     except requests.exceptions.ConnectionError:
         return "⚠️ No pude conectar con Ollama. ¿Está corriendo? (revisá la app de Ollama)."
+    except requests.exceptions.ReadTimeout:
+        return ("⚠️ La IA tardó demasiado (documento muy grande para tu equipo sin "
+                "placa de video). Probá con un archivo más chico o preguntá algo puntual.")
     except Exception as e:
         return f"⚠️ Error al razonar: {e}"
 
@@ -58,8 +73,9 @@ PREGUNTA: {pregunta}
     return _chat(prompt)
 
 
-# Los documentos pueden ser largos; recortamos para no saturar el modelo.
-MAX_TEXTO = 12000
+# Los documentos pueden ser largos; recortamos para que la IA en CPU no se
+# demore de más. 6000 caracteres ≈ 2-3 páginas, suficiente para un buen resumen.
+MAX_TEXTO = 6000
 
 
 def generar_insights_texto(texto: str) -> str:
@@ -90,6 +106,28 @@ CONTENIDO:
 PREGUNTA: {pregunta}
 """
     return _chat(prompt)
+
+
+def responder_proyecto(pregunta: str, fragmentos: list) -> str:
+    """Responde una pregunta sobre un PROYECTO usando los fragmentos relevantes
+    que el buscador RAG encontró. Cita los archivos."""
+    if not fragmentos:
+        return ("No encontré partes del proyecto relacionadas con tu pregunta. "
+                "Probá reformularla o ser más específico.")
+    contexto = "\n\n".join(
+        f"--- Archivo: {f['archivo']} ---\n{f['texto']}" for f in fragmentos
+    )
+    prompt = f"""Eres ShaddAI, un ingeniero de software experto. Responde en español
+la pregunta del usuario sobre su proyecto, basándote SOLO en los fragmentos de
+código/archivos que te doy. Menciona los archivos relevantes. Si la información
+no está en los fragmentos, dilo con honestidad (no inventes).
+
+FRAGMENTOS DEL PROYECTO:
+{contexto}
+
+PREGUNTA: {pregunta}
+"""
+    return _chat(prompt, num_predict=700)
 
 
 def analizar_seguridad(reporte: dict) -> str:

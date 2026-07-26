@@ -30,3 +30,6 @@ services/*/uploads/
 
 # Metabase (binario grande, no versionar)
 metabase/
+
+# Indice RAG de proyectos
+services/*/rag_index/

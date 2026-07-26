@@ -90,3 +90,21 @@ CONTENIDO:
 PREGUNTA: {pregunta}
 """
     return _chat(prompt)
+
+
+def analizar_seguridad(reporte: dict) -> str:
+    """Explica en lenguaje claro los hallazgos del inspector de seguridad."""
+    datos = json.dumps(reporte, ensure_ascii=False, indent=2)
+    prompt = f"""Eres ShaddAI, un experto en seguridad web defensiva. Te doy el
+resultado de revisar los encabezados de seguridad de un sitio. Escribe en español:
+
+1. Una evaluación general del nivel de seguridad (en 2 líneas).
+2. Los riesgos más importantes por los encabezados que faltan.
+3. Recomendaciones concretas y priorizadas para mejorar.
+
+Sé claro y práctico. No inventes hallazgos que no estén en los datos.
+
+RESULTADO DE LA INSPECCIÓN:
+{datos}
+"""
+    return _chat(prompt)

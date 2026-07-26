@@ -15,6 +15,7 @@ from db import engine, Base, get_db
 import models
 import ai
 import ingest
+import security
 
 # Carpeta donde se guardan los archivos subidos (para poder re-analizarlos)
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
@@ -181,6 +182,22 @@ def _calcular_analytics(df: pd.DataFrame) -> dict:
             "datos": [{"nombre": str(k), "valor": int(v)} for k, v in conteo.items()],
         })
 
+    # Cruces: suma de cada métrica numérica agrupada por cada categoría.
+    # Esto es lo realmente útil para decidir (ej. "ventas por región").
+    # Se limita a las 2 primeras categóricas x 2 primeras numéricas.
+    agregaciones = []
+    for cat in categoricas[:2]:
+        for num in numericas[:2]:
+            grupo = (df.groupby(cat)[num].sum()
+                       .sort_values(ascending=False).head(10))
+            if grupo.empty:
+                continue
+            agregaciones.append({
+                "categoria": cat,
+                "metrica": num,
+                "datos": [{"nombre": str(k), "valor": float(v)} for k, v in grupo.items()],
+            })
+
     return {
         "filas": len(df),
         "columnas": list(df.columns),
@@ -188,6 +205,7 @@ def _calcular_analytics(df: pd.DataFrame) -> dict:
         "columnas_categoricas": categoricas,
         "resumen_numerico": resumen_numerico,
         "resumen_categorico": resumen_categorico,
+        "agregaciones": agregaciones,
     }
 
 
@@ -275,3 +293,21 @@ def borrar_analisis(analisis_id: int, db: Session = Depends(get_db)):
     db.delete(registro)
     db.commit()
     return {"ok": True}
+
+
+# ---------- Inspector de seguridad (defensivo) ----------
+class ScanIn(BaseModel):
+    url: str
+
+
+@app.post("/security/scan")
+def escanear_seguridad(payload: ScanIn):
+    """Analiza los encabezados de seguridad de un sitio + razonamiento de ShaddAI.
+
+    Uso legítimo: sitios propios o con autorización. No hace explotación.
+    """
+    reporte = security.inspeccionar(payload.url)
+    if reporte.get("error"):
+        return {"reporte": reporte, "analisis": None}
+    analisis = ai.analizar_seguridad(reporte)
+    return {"reporte": reporte, "analisis": analisis}

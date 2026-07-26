@@ -18,8 +18,30 @@ function App() {
   const [pregunta, setPregunta] = useState("");
   const [respuesta, setRespuesta] = useState("");
   const [conocimiento, setConocimiento] = useState([]);
+  const [urlScan, setUrlScan] = useState("");
+  const [escaneando, setEscaneando] = useState(false);
+  const [scan, setScan] = useState(null);
 
   useEffect(() => { cargar(); cargarConocimiento(); }, []);
+
+  async function escanearSeguridad(e) {
+    e.preventDefault();
+    if (!urlScan.trim()) return;
+    setEscaneando(true);
+    setScan(null);
+    try {
+      const r = await fetch(`${CORE}/security/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlScan }),
+      }).then((r) => r.json());
+      setScan(r);
+    } catch {
+      setError("No se pudo escanear el sitio.");
+    } finally {
+      setEscaneando(false);
+    }
+  }
 
   async function cargar() {
     try {
@@ -220,9 +242,25 @@ function App() {
                   ))}
                 </div>
               )}
+              {/* Gráficos cruzados: métrica por categoría (lo más útil para decidir) */}
+              {(analytics.agregaciones || []).map((a) => (
+                <div className="grafico" key={a.categoria + a.metrica}>
+                  <h3>{a.metrica} por {a.categoria} (top {a.datos.length})</h3>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={a.datos}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                      <XAxis dataKey="nombre" tick={{ fill: "#aaa", fontSize: 12 }} />
+                      <YAxis tick={{ fill: "#aaa", fontSize: 12 }} />
+                      <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #444" }} />
+                      <Bar dataKey="valor" fill="#4fd1a5" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ))}
+
               {analytics.resumen_categorico.map((c) => (
                 <div className="grafico" key={c.columna}>
-                  <h3>{c.columna} (top {c.datos.length})</h3>
+                  <h3>{c.columna} — conteo (top {c.datos.length})</h3>
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={c.datos}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#333" />
@@ -248,6 +286,68 @@ function App() {
           )}
         </section>
       )}
+
+      <section className="card">
+        <h2>🛡️ Inspector de seguridad</h2>
+        <p className="hint">
+          Analiza los encabezados de seguridad de un sitio (usá sitios propios o autorizados).
+        </p>
+        <form onSubmit={escanearSeguridad} className="ia-form">
+          <input
+            type="text"
+            placeholder="ejemplo.com"
+            value={urlScan}
+            onChange={(e) => setUrlScan(e.target.value)}
+            disabled={escaneando}
+          />
+          <button type="submit" disabled={escaneando}>
+            {escaneando ? "Escaneando…" : "Escanear"}
+          </button>
+        </form>
+
+        {scan?.reporte?.error && (
+          <div className="error" style={{ marginTop: "0.8rem" }}>
+            {scan.reporte.error}
+          </div>
+        )}
+
+        {scan?.reporte && !scan.reporte.error && (
+          <div className="scan-resultado">
+            <div className="scan-head">
+              <span className="scan-url">{scan.reporte.url}</span>
+              <span className={`scan-puntaje ${scan.reporte.puntaje >= 70 ? "ok" : scan.reporte.puntaje >= 40 ? "medio" : "malo"}`}>
+                {scan.reporte.puntaje}/100
+              </span>
+            </div>
+            <div className="scan-cols">
+              <div>
+                <h4>✅ Presentes ({scan.reporte.headers_presentes.length})</h4>
+                <ul>
+                  {scan.reporte.headers_presentes.map((h) => (
+                    <li key={h.header}>{h.header}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4>⚠️ Faltantes ({scan.reporte.headers_faltantes.length})</h4>
+                <ul>
+                  {scan.reporte.headers_faltantes.map((h) => (
+                    <li key={h.header} title={h.descripcion}>{h.header}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            {scan.analisis && (
+              <div className="ia-respuesta">
+                {scan.analisis}
+                <button className="btn-guardar" onClick={() => guardarConocimiento(scan.analisis)}>
+                  💾 Guardar en base de conocimiento
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="card">
         <h2>🧠 Base de conocimiento ({conocimiento.length})</h2>

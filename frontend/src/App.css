@@ -238,3 +238,46 @@ li {
 .btn-borrar:hover {
   background: #3a1212;
 }
+
+.scan-resultado {
+  margin-top: 1rem;
+}
+.scan-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+.scan-url {
+  font-size: 0.85rem;
+  color: #aaa;
+  word-break: break-all;
+}
+.scan-puntaje {
+  font-weight: 700;
+  font-size: 1.1rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: 8px;
+}
+.scan-puntaje.ok { background: #17351f; color: #6ee7a0; }
+.scan-puntaje.medio { background: #3a3212; color: #e7d06e; }
+.scan-puntaje.malo { background: #3a1212; color: #f0a0a0; }
+.scan-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.scan-cols h4 {
+  font-size: 0.85rem;
+  margin: 0 0 0.4rem;
+}
+.scan-cols ul {
+  list-style: none;
+  padding: 0;
+  font-size: 0.82rem;
+  color: #bbb;
+}
+.scan-cols li {
+  padding: 0.15rem 0;
+  font-family: monospace;
+}

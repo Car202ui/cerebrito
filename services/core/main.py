@@ -3,24 +3,38 @@ ShaddAI · servicio CORE
 Base de conocimiento + ingesta de CSV + análisis de datos.
 FastAPI + SQLAlchemy + MySQL.
 """
-import io
 import os
 import pandas as pd
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from db import engine, Base, get_db
 import models
 import ai
+import ingest
 
-# Carpeta donde se guardan los CSV subidos (para poder re-analizarlos)
+# Carpeta donde se guardan los archivos subidos (para poder re-analizarlos)
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Crea las tablas si no existen
 Base.metadata.create_all(bind=engine)
+
+
+def _migrar_columnas():
+    """Agrega columnas nuevas a 'datasets' si la tabla es de una versión previa."""
+    for col, tipo in (("tipo", "VARCHAR(20)"), ("texto", "LONGTEXT")):
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE datasets ADD COLUMN {col} {tipo}"))
+        except Exception:
+            pass  # ya existe
+
+
+_migrar_columnas()
 
 app = FastAPI(title="ShaddAI · core", version="0.2.0")
 
@@ -70,39 +84,48 @@ def obtener_proyecto(proyecto_id: int, db: Session = Depends(get_db)):
     return proyecto
 
 
-# ---------- Ingesta de CSV ----------
+# ---------- Ingesta universal (cualquier archivo) ----------
 @app.post("/datasets/upload")
-async def subir_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    if not file.filename.lower().endswith(".csv"):
-        raise HTTPException(400, "El archivo debe ser un .csv")
+async def subir_archivo(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    nombre = file.filename or "archivo"
+    tipo = ingest.detectar_tipo(nombre)
+    if tipo == "desconocido":
+        raise HTTPException(
+            400, f"Tipo de archivo no soportado ({nombre}). "
+                 "Aceptados: CSV, Excel, JSON, TXT, PDF, código, SQL, logs.")
 
     contenido = await file.read()
-    try:
-        df = pd.read_csv(io.BytesIO(contenido))
-    except Exception as e:
-        raise HTTPException(400, f"No se pudo leer el CSV: {e}")
+    dataset = models.Dataset(nombre_archivo=nombre, tipo=tipo)
 
-    dataset = models.Dataset(
-        nombre_archivo=file.filename,
-        filas=len(df),
-        columnas=list(df.columns),
-        muestra=df.head(20).fillna("").to_dict(orient="records"),
-    )
+    if tipo == "tabla":
+        try:
+            df = ingest.leer_tabla(nombre, contenido)
+        except Exception as e:
+            raise HTTPException(400, f"No se pudo leer la tabla: {e}")
+        dataset.filas = len(df)
+        dataset.columnas = list(df.columns)
+        dataset.muestra = df.head(20).fillna("").astype(str).to_dict(orient="records")
+    else:  # texto
+        try:
+            dataset.texto = ingest.leer_texto(nombre, contenido)
+        except Exception as e:
+            raise HTTPException(400, f"No se pudo leer el documento: {e}")
+
     db.add(dataset)
     db.commit()
     db.refresh(dataset)
 
-    # Guardar el CSV completo en disco para poder analizarlo después
-    ruta = os.path.join(UPLOAD_DIR, f"{dataset.id}.csv")
+    # Guardar el archivo original en disco
+    ruta = os.path.join(UPLOAD_DIR, f"{dataset.id}_{nombre}")
     with open(ruta, "wb") as f:
         f.write(contenido)
 
     return {
         "id": dataset.id,
         "nombre_archivo": dataset.nombre_archivo,
+        "tipo": dataset.tipo,
         "filas": dataset.filas,
         "columnas": dataset.columnas,
-        "muestra": dataset.muestra,
     }
 
 
@@ -111,12 +134,23 @@ def listar_datasets(db: Session = Depends(get_db)):
     return db.query(models.Dataset).order_by(models.Dataset.id.desc()).all()
 
 
-def _cargar_df(dataset_id: int) -> pd.DataFrame:
-    """Carga el CSV guardado de un dataset o lanza 404."""
-    ruta = os.path.join(UPLOAD_DIR, f"{dataset_id}.csv")
+def _get_dataset(dataset_id: int, db: Session) -> models.Dataset:
+    ds = db.get(models.Dataset, dataset_id)
+    if not ds:
+        raise HTTPException(404, "Archivo no encontrado")
+    return ds
+
+
+def _cargar_df(dataset_id: int, db: Session) -> pd.DataFrame:
+    """Carga el archivo tabular guardado como DataFrame."""
+    ds = _get_dataset(dataset_id, db)
+    if ds.tipo != "tabla":
+        raise HTTPException(400, "Este archivo no es una tabla (es un documento).")
+    ruta = os.path.join(UPLOAD_DIR, f"{ds.id}_{ds.nombre_archivo}")
     if not os.path.exists(ruta):
         raise HTTPException(404, "No hay archivo guardado para ese dataset")
-    return pd.read_csv(ruta)
+    with open(ruta, "rb") as f:
+        return ingest.leer_tabla(ds.nombre_archivo, f.read())
 
 
 def _calcular_analytics(df: pd.DataFrame) -> dict:
@@ -158,16 +192,30 @@ def _calcular_analytics(df: pd.DataFrame) -> dict:
 
 
 @app.get("/datasets/{dataset_id}/analytics")
-def analizar_dataset(dataset_id: int):
-    """Devuelve estadísticas listas para graficar y tomar decisiones."""
-    return _calcular_analytics(_cargar_df(dataset_id))
+def analizar_dataset(dataset_id: int, db: Session = Depends(get_db)):
+    """Estadísticas para graficar (solo tablas)."""
+    return _calcular_analytics(_cargar_df(dataset_id, db))
+
+
+@app.get("/datasets/{dataset_id}/content")
+def contenido_documento(dataset_id: int, db: Session = Depends(get_db)):
+    """Devuelve el texto de un documento (para preview)."""
+    ds = _get_dataset(dataset_id, db)
+    if ds.tipo != "texto":
+        raise HTTPException(400, "Este archivo no es un documento de texto.")
+    texto = ds.texto or ""
+    return {"nombre_archivo": ds.nombre_archivo, "longitud": len(texto),
+            "preview": texto[:3000]}
 
 
 @app.get("/datasets/{dataset_id}/insights")
-def insights_dataset(dataset_id: int):
-    """ShaddAI razona sobre el dataset: conclusiones + recomendación."""
-    analytics = _calcular_analytics(_cargar_df(dataset_id))
-    return {"insights": ai.generar_insights(analytics)}
+def insights_dataset(dataset_id: int, db: Session = Depends(get_db)):
+    """ShaddAI razona sobre CUALQUIER archivo (tabla o documento)."""
+    ds = _get_dataset(dataset_id, db)
+    if ds.tipo == "tabla":
+        analytics = _calcular_analytics(_cargar_df(dataset_id, db))
+        return {"insights": ai.generar_insights(analytics)}
+    return {"insights": ai.generar_insights_texto(ds.texto or "")}
 
 
 class PreguntaIn(BaseModel):
@@ -175,7 +223,10 @@ class PreguntaIn(BaseModel):
 
 
 @app.post("/datasets/{dataset_id}/ask")
-def preguntar_dataset(dataset_id: int, payload: PreguntaIn):
-    """Pregunta en lenguaje natural sobre los datos."""
-    analytics = _calcular_analytics(_cargar_df(dataset_id))
-    return {"respuesta": ai.responder_pregunta(payload.pregunta, analytics)}
+def preguntar_dataset(dataset_id: int, payload: PreguntaIn, db: Session = Depends(get_db)):
+    """Pregunta en lenguaje natural sobre cualquier archivo."""
+    ds = _get_dataset(dataset_id, db)
+    if ds.tipo == "tabla":
+        analytics = _calcular_analytics(_cargar_df(dataset_id, db))
+        return {"respuesta": ai.responder_pregunta(payload.pregunta, analytics)}
+    return {"respuesta": ai.responder_pregunta_texto(payload.pregunta, ds.texto or "")}

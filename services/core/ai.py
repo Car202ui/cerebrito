@@ -56,3 +56,37 @@ ESTADÍSTICAS: {resumen}
 PREGUNTA: {pregunta}
 """
     return _chat(prompt)
+
+
+# Los documentos pueden ser largos; recortamos para no saturar el modelo.
+MAX_TEXTO = 12000
+
+
+def generar_insights_texto(texto: str) -> str:
+    """Conclusiones sobre un documento/código."""
+    fragmento = texto[:MAX_TEXTO]
+    prompt = f"""Eres ShaddAI, un asistente experto. Analiza el siguiente contenido
+de un archivo y escribe en español, breve y claro:
+
+1. De qué trata el archivo (resumen en 2-3 líneas).
+2. Los 3 puntos más importantes.
+3. Una observación o recomendación útil.
+
+CONTENIDO:
+{fragmento}
+"""
+    return _chat(prompt)
+
+
+def responder_pregunta_texto(pregunta: str, texto: str) -> str:
+    """Responde una pregunta sobre el contenido de un documento/código."""
+    fragmento = texto[:MAX_TEXTO]
+    prompt = f"""Eres ShaddAI. Responde en español la pregunta del usuario basándote
+SOLO en el siguiente contenido. Si no está en el contenido, dilo con honestidad.
+
+CONTENIDO:
+{fragmento}
+
+PREGUNTA: {pregunta}
+"""
+    return _chat(prompt)

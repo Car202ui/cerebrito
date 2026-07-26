@@ -4,23 +4,21 @@ import {
 } from "recharts";
 import "./App.css";
 
-// URL del servicio core (FastAPI).
 const CORE = "http://localhost:8001";
 
 function App() {
   const [datasets, setDatasets] = useState([]);
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState("");
-  const [analytics, setAnalytics] = useState(null);
-  const [datasetActivo, setDatasetActivo] = useState(null);
+  const [activo, setActivo] = useState(null);      // { id, tipo, nombre }
+  const [analytics, setAnalytics] = useState(null); // para tablas
+  const [contenido, setContenido] = useState(null); // para documentos
   const [insights, setInsights] = useState("");
   const [pensando, setPensando] = useState(false);
   const [pregunta, setPregunta] = useState("");
   const [respuesta, setRespuesta] = useState("");
 
-  useEffect(() => {
-    cargar();
-  }, []);
+  useEffect(() => { cargar(); }, []);
 
   async function cargar() {
     try {
@@ -32,7 +30,7 @@ function App() {
     }
   }
 
-  async function subirCsv(e) {
+  async function subirArchivo(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     setSubiendo(true);
@@ -44,25 +42,30 @@ function App() {
       if (!res.ok) throw new Error((await res.json()).detail || "Error");
       const nuevo = await res.json();
       await cargar();
-      await verAnalytics(nuevo.id); // grafica automáticamente el recién subido
+      await abrir(nuevo);
     } catch (err) {
-      setError("Error subiendo CSV: " + err.message);
+      setError("Error subiendo archivo: " + err.message);
     } finally {
       setSubiendo(false);
       e.target.value = "";
     }
   }
 
-  async function verAnalytics(id) {
-    setDatasetActivo(id);
+  // Abre un archivo: si es tabla carga analytics, si es texto carga el contenido
+  async function abrir(ds) {
+    setActivo({ id: ds.id, tipo: ds.tipo, nombre: ds.nombre_archivo });
     setAnalytics(null);
+    setContenido(null);
     setInsights("");
     setRespuesta("");
     try {
-      const a = await fetch(`${CORE}/datasets/${id}/analytics`).then((r) => r.json());
-      setAnalytics(a);
+      if (ds.tipo === "tabla") {
+        setAnalytics(await fetch(`${CORE}/datasets/${ds.id}/analytics`).then((r) => r.json()));
+      } else {
+        setContenido(await fetch(`${CORE}/datasets/${ds.id}/content`).then((r) => r.json()));
+      }
     } catch {
-      setError("No se pudo analizar el dataset.");
+      setError("No se pudo abrir el archivo.");
     }
   }
 
@@ -70,7 +73,7 @@ function App() {
     setPensando(true);
     setInsights("");
     try {
-      const r = await fetch(`${CORE}/datasets/${datasetActivo}/insights`).then((r) => r.json());
+      const r = await fetch(`${CORE}/datasets/${activo.id}/insights`).then((r) => r.json());
       setInsights(r.insights);
     } catch {
       setError("ShaddAI no pudo razonar (¿Ollama está corriendo?).");
@@ -85,7 +88,7 @@ function App() {
     setPensando(true);
     setRespuesta("");
     try {
-      const r = await fetch(`${CORE}/datasets/${datasetActivo}/ask`, {
+      const r = await fetch(`${CORE}/datasets/${activo.id}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pregunta }),
@@ -102,47 +105,49 @@ function App() {
     <div className="app">
       <header>
         <h1>🧠 ShaddAI</h1>
-        <p>Sube tus datos · obtén análisis visual para decidir</p>
+        <p>Sube cualquier archivo · ShaddAI lo razona por ti</p>
       </header>
 
       {error && <div className="error">{error}</div>}
 
       <section className="card">
-        <h2>Subir CSV</h2>
-        <input type="file" accept=".csv" onChange={subirCsv} disabled={subiendo} />
-        {subiendo && <span> Procesando y analizando…</span>}
+        <h2>Subir archivo</h2>
+        <input type="file" onChange={subirArchivo} disabled={subiendo} />
+        <p className="hint">
+          Datos: CSV, Excel, JSON · Documentos: PDF, TXT, código, SQL, logs
+        </p>
+        {subiendo && <span> Procesando…</span>}
       </section>
 
       <section className="card">
-        <h2>Datasets guardados ({datasets.length})</h2>
+        <h2>Archivos ({datasets.length})</h2>
         <ul className="lista-datasets">
           {datasets.map((d) => (
             <li key={d.id}>
-              <span>{d.nombre_archivo} — {d.filas} filas</span>
-              <button onClick={() => verAnalytics(d.id)}>Analizar</button>
+              <span>
+                {d.tipo === "texto" ? "📄" : "📊"} {d.nombre_archivo}
+                {d.tipo === "tabla" && d.filas != null ? ` — ${d.filas} filas` : ""}
+              </span>
+              <button onClick={() => abrir(d)}>Abrir</button>
             </li>
           ))}
         </ul>
       </section>
 
-      {analytics && (
+      {activo && (
         <section className="card">
-          <h2>Análisis del dataset #{datasetActivo}</h2>
-          <p className="sub">
-            {analytics.filas} filas · {analytics.columnas.length} columnas
-          </p>
+          <h2>{activo.nombre}</h2>
 
-          {/* Razonamiento de ShaddAI */}
+          {/* Razonamiento de ShaddAI (funciona para tablas y documentos) */}
           <div className="ia">
             <button className="btn-ia" onClick={pedirInsights} disabled={pensando}>
               🧠 {pensando ? "ShaddAI está pensando…" : "Pedir análisis a ShaddAI"}
             </button>
             {insights && <div className="ia-respuesta">{insights}</div>}
-
             <form onSubmit={preguntar} className="ia-form">
               <input
                 type="text"
-                placeholder="Pregúntale a ShaddAI sobre estos datos…"
+                placeholder="Pregúntale a ShaddAI sobre este archivo…"
                 value={pregunta}
                 onChange={(e) => setPregunta(e.target.value)}
                 disabled={pensando}
@@ -152,42 +157,50 @@ function App() {
             {respuesta && <div className="ia-respuesta">{respuesta}</div>}
           </div>
 
-          {/* Tarjetas de resumen numérico */}
-          {analytics.resumen_numerico.length > 0 && (
-            <div className="tarjetas">
-              {analytics.resumen_numerico.map((r) => (
-                <div className="tarjeta" key={r.columna}>
-                  <div className="tarjeta-titulo">{r.columna}</div>
-                  <div className="tarjeta-valor">{r.promedio.toLocaleString()}</div>
-                  <div className="tarjeta-sub">promedio</div>
-                  <div className="tarjeta-mini">
-                    min {r.minimo.toLocaleString()} · máx {r.maximo.toLocaleString()}
-                  </div>
+          {/* Vista de TABLA: tarjetas + gráficos */}
+          {analytics && (
+            <>
+              <p className="sub">{analytics.filas} filas · {analytics.columnas.length} columnas</p>
+              {analytics.resumen_numerico.length > 0 && (
+                <div className="tarjetas">
+                  {analytics.resumen_numerico.map((r) => (
+                    <div className="tarjeta" key={r.columna}>
+                      <div className="tarjeta-titulo">{r.columna}</div>
+                      <div className="tarjeta-valor">{r.promedio.toLocaleString()}</div>
+                      <div className="tarjeta-sub">promedio</div>
+                      <div className="tarjeta-mini">
+                        min {r.minimo.toLocaleString()} · máx {r.maximo.toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {analytics.resumen_categorico.map((c) => (
+                <div className="grafico" key={c.columna}>
+                  <h3>{c.columna} (top {c.datos.length})</h3>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={c.datos}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                      <XAxis dataKey="nombre" tick={{ fill: "#aaa", fontSize: 12 }} />
+                      <YAxis tick={{ fill: "#aaa", fontSize: 12 }} />
+                      <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #444" }} />
+                      <Bar dataKey="valor" fill="#6c8cff" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               ))}
-            </div>
+            </>
           )}
 
-          {/* Gráficos de barras por columna categórica */}
-          {analytics.resumen_categorico.map((c) => (
-            <div className="grafico" key={c.columna}>
-              <h3>{c.columna} (top {c.datos.length})</h3>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={c.datos}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                  <XAxis dataKey="nombre" tick={{ fill: "#aaa", fontSize: 12 }} />
-                  <YAxis tick={{ fill: "#aaa", fontSize: 12 }} />
-                  <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #444" }} />
-                  <Bar dataKey="valor" fill="#6c8cff" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ))}
-
-          {analytics.resumen_numerico.length === 0 &&
-            analytics.resumen_categorico.length === 0 && (
-              <p>No se detectaron columnas analizables en este CSV.</p>
-            )}
+          {/* Vista de DOCUMENTO: preview del texto */}
+          {contenido && (
+            <>
+              <p className="sub">{contenido.longitud.toLocaleString()} caracteres</p>
+              <pre className="doc-preview">{contenido.preview}
+                {contenido.longitud > contenido.preview.length ? "\n\n… (recortado)" : ""}
+              </pre>
+            </>
+          )}
         </section>
       )}
     </div>

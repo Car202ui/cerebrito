@@ -21,12 +21,14 @@ class Proyecto(Base):
 
 
 class Dataset(Base):
-    """Metadata de un CSV subido + una muestra de sus filas."""
+    """Metadata de CUALQUIER archivo subido (tabla o documento)."""
     __tablename__ = "datasets"
 
     id = Column(Integer, primary_key=True, index=True)
     nombre_archivo = Column(String(255), nullable=False)
-    filas = Column(Integer, nullable=True)
-    columnas = Column(JSON, nullable=True)       # lista de nombres de columnas
-    muestra = Column(JSON, nullable=True)        # primeras filas como preview
+    tipo = Column(String(20), nullable=True)     # 'tabla' | 'texto'
+    filas = Column(Integer, nullable=True)       # solo para tablas
+    columnas = Column(JSON, nullable=True)       # solo para tablas
+    muestra = Column(JSON, nullable=True)        # preview de tablas
+    texto = Column(Text, nullable=True)          # contenido de documentos/código
     creado_en = Column(DateTime, default=datetime.utcnow)

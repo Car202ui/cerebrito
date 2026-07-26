@@ -122,6 +122,26 @@ li {
   margin-bottom: 0.5rem;
 }
 
+.hint {
+  color: #777;
+  font-size: 0.8rem;
+  margin: 0.4rem 0 0;
+}
+.doc-preview {
+  background: #16181f;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #cdd;
+}
+
 .ia {
   margin: 1rem 0 1.5rem;
 }

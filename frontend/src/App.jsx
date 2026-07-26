@@ -13,6 +13,10 @@ function App() {
   const [error, setError] = useState("");
   const [analytics, setAnalytics] = useState(null);
   const [datasetActivo, setDatasetActivo] = useState(null);
+  const [insights, setInsights] = useState("");
+  const [pensando, setPensando] = useState(false);
+  const [pregunta, setPregunta] = useState("");
+  const [respuesta, setRespuesta] = useState("");
 
   useEffect(() => {
     cargar();
@@ -52,11 +56,45 @@ function App() {
   async function verAnalytics(id) {
     setDatasetActivo(id);
     setAnalytics(null);
+    setInsights("");
+    setRespuesta("");
     try {
       const a = await fetch(`${CORE}/datasets/${id}/analytics`).then((r) => r.json());
       setAnalytics(a);
     } catch {
       setError("No se pudo analizar el dataset.");
+    }
+  }
+
+  async function pedirInsights() {
+    setPensando(true);
+    setInsights("");
+    try {
+      const r = await fetch(`${CORE}/datasets/${datasetActivo}/insights`).then((r) => r.json());
+      setInsights(r.insights);
+    } catch {
+      setError("ShaddAI no pudo razonar (¿Ollama está corriendo?).");
+    } finally {
+      setPensando(false);
+    }
+  }
+
+  async function preguntar(e) {
+    e.preventDefault();
+    if (!pregunta.trim()) return;
+    setPensando(true);
+    setRespuesta("");
+    try {
+      const r = await fetch(`${CORE}/datasets/${datasetActivo}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pregunta }),
+      }).then((r) => r.json());
+      setRespuesta(r.respuesta);
+    } catch {
+      setError("ShaddAI no pudo responder.");
+    } finally {
+      setPensando(false);
     }
   }
 
@@ -93,6 +131,26 @@ function App() {
           <p className="sub">
             {analytics.filas} filas · {analytics.columnas.length} columnas
           </p>
+
+          {/* Razonamiento de ShaddAI */}
+          <div className="ia">
+            <button className="btn-ia" onClick={pedirInsights} disabled={pensando}>
+              🧠 {pensando ? "ShaddAI está pensando…" : "Pedir análisis a ShaddAI"}
+            </button>
+            {insights && <div className="ia-respuesta">{insights}</div>}
+
+            <form onSubmit={preguntar} className="ia-form">
+              <input
+                type="text"
+                placeholder="Pregúntale a ShaddAI sobre estos datos…"
+                value={pregunta}
+                onChange={(e) => setPregunta(e.target.value)}
+                disabled={pensando}
+              />
+              <button type="submit" disabled={pensando}>Preguntar</button>
+            </form>
+            {respuesta && <div className="ia-respuesta">{respuesta}</div>}
+          </div>
 
           {/* Tarjetas de resumen numérico */}
           {analytics.resumen_numerico.length > 0 && (

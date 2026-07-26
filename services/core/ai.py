@@ -1,0 +1,58 @@
+"""
+ShaddAI · razonamiento con Ollama (LLM local, gratis).
+Toma estadísticas de un dataset y genera conclusiones/recomendaciones,
+o responde preguntas del usuario sobre sus datos.
+"""
+import os
+import json
+import requests
+
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
+
+
+def _chat(prompt: str) -> str:
+    """Envía un prompt a Ollama y devuelve la respuesta en texto."""
+    try:
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return resp.json().get("response", "").strip()
+    except requests.exceptions.ConnectionError:
+        return "⚠️ No pude conectar con Ollama. ¿Está corriendo? (revisá la app de Ollama)."
+    except Exception as e:
+        return f"⚠️ Error al razonar: {e}"
+
+
+def generar_insights(analytics: dict) -> str:
+    """Conclusiones y recomendaciones a partir de las estadísticas del dataset."""
+    resumen = json.dumps(analytics, ensure_ascii=False, indent=2)
+    prompt = f"""Eres ShaddAI, un analista de datos experto. Te doy las estadísticas
+de un conjunto de datos. Escribe en español, de forma clara y breve:
+
+1. Las 3 conclusiones más importantes.
+2. Una recomendación concreta para tomar decisiones.
+
+No inventes datos que no estén en las estadísticas. Sé directo.
+
+ESTADÍSTICAS:
+{resumen}
+"""
+    return _chat(prompt)
+
+
+def responder_pregunta(pregunta: str, analytics: dict) -> str:
+    """Responde una pregunta del usuario usando las estadísticas del dataset."""
+    resumen = json.dumps(analytics, ensure_ascii=False)
+    prompt = f"""Eres ShaddAI, un analista de datos. Responde en español la pregunta
+del usuario basándote SOLO en estas estadísticas. Si la información no alcanza,
+dilo con honestidad.
+
+ESTADÍSTICAS: {resumen}
+
+PREGUNTA: {pregunta}
+"""
+    return _chat(prompt)

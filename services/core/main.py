@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from db import engine, Base, get_db
 import models
+import ai
 
 # Carpeta donde se guardan los CSV subidos (para poder re-analizarlos)
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
@@ -118,11 +119,8 @@ def _cargar_df(dataset_id: int) -> pd.DataFrame:
     return pd.read_csv(ruta)
 
 
-@app.get("/datasets/{dataset_id}/analytics")
-def analizar_dataset(dataset_id: int):
-    """Devuelve estadísticas listas para graficar y tomar decisiones."""
-    df = _cargar_df(dataset_id)
-
+def _calcular_analytics(df: pd.DataFrame) -> dict:
+    """Estadísticas listas para graficar y para que la IA razone."""
     numericas = df.select_dtypes(include="number").columns.tolist()
     categoricas = df.select_dtypes(exclude="number").columns.tolist()
 
@@ -157,3 +155,27 @@ def analizar_dataset(dataset_id: int):
         "resumen_numerico": resumen_numerico,
         "resumen_categorico": resumen_categorico,
     }
+
+
+@app.get("/datasets/{dataset_id}/analytics")
+def analizar_dataset(dataset_id: int):
+    """Devuelve estadísticas listas para graficar y tomar decisiones."""
+    return _calcular_analytics(_cargar_df(dataset_id))
+
+
+@app.get("/datasets/{dataset_id}/insights")
+def insights_dataset(dataset_id: int):
+    """ShaddAI razona sobre el dataset: conclusiones + recomendación."""
+    analytics = _calcular_analytics(_cargar_df(dataset_id))
+    return {"insights": ai.generar_insights(analytics)}
+
+
+class PreguntaIn(BaseModel):
+    pregunta: str
+
+
+@app.post("/datasets/{dataset_id}/ask")
+def preguntar_dataset(dataset_id: int, payload: PreguntaIn):
+    """Pregunta en lenguaje natural sobre los datos."""
+    analytics = _calcular_analytics(_cargar_df(dataset_id))
+    return {"respuesta": ai.responder_pregunta(payload.pregunta, analytics)}

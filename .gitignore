@@ -27,3 +27,6 @@ services/*/venv/
 
 # CSVs subidos
 services/*/uploads/
+
+# Metabase (binario grande, no versionar)
+metabase/

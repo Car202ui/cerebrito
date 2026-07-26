@@ -1,10 +1,14 @@
 import { useState, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  PieChart, Pie, Cell, Legend,
 } from "recharts";
 import "./App.css";
 
 const CORE = "http://localhost:8001";
+// Paleta para los gráficos de torta
+const COLORS = ["#6c8cff", "#4fd1a5", "#f5a05a", "#e77ea0", "#a78bfa",
+                "#5ac8e7", "#e7d06e", "#7bd88f", "#f07171", "#9ca3af"];
 
 function App() {
   const [datasets, setDatasets] = useState([]);
@@ -258,17 +262,21 @@ function App() {
                 </div>
               ))}
 
+              {/* Distribución por categoría como torta */}
               {analytics.resumen_categorico.map((c) => (
                 <div className="grafico" key={c.columna}>
-                  <h3>{c.columna} — conteo (top {c.datos.length})</h3>
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={c.datos}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                      <XAxis dataKey="nombre" tick={{ fill: "#aaa", fontSize: 12 }} />
-                      <YAxis tick={{ fill: "#aaa", fontSize: 12 }} />
+                  <h3>{c.columna} — distribución (top {c.datos.length})</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <PieChart>
+                      <Pie data={c.datos} dataKey="valor" nameKey="nombre"
+                           cx="50%" cy="50%" outerRadius={95} label>
+                        {c.datos.map((_, i) => (
+                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        ))}
+                      </Pie>
                       <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #444" }} />
-                      <Bar dataKey="valor" fill="#6c8cff" radius={[4, 4, 0, 0]} />
-                    </BarChart>
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                    </PieChart>
                   </ResponsiveContainer>
                 </div>
               ))}

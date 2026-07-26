@@ -405,20 +405,16 @@ function App() {
       <section className="card">
         <h2>📈 Dashboards (Metabase)</h2>
         <p className="hint">
-          Dashboards profesionales sobre tus datos, conectados a la base cerebrito.
-          Requiere Metabase corriendo (start-metabase.bat).
+          Metabase arma dashboards profesionales sobre tus datos (la base cerebrito).
+          Se abre en su propia pestaña porque Metabase, por seguridad, no permite
+          mostrarse dentro de otra página.
         </p>
         <a className="btn-ia" href="http://localhost:3000" target="_blank" rel="noreferrer"
-           style={{ display: "inline-block", textDecoration: "none", marginBottom: "1rem" }}>
-          🔗 Abrir Metabase en pestaña nueva
+           style={{ display: "inline-block", textDecoration: "none", margin: "0.5rem 0 1rem" }}>
+          🔗 Abrir Metabase
         </a>
-        <div className="metabase-frame">
-          <iframe title="Metabase" src="http://localhost:3000"
-                  style={{ width: "100%", height: "600px", border: "1px solid #333", borderRadius: 8 }} />
-        </div>
-        <p className="hint">
-          Si el recuadro sale en blanco, usá el botón de arriba (Metabase bloquea la
-          incrustación directa por seguridad; se puede habilitar por dashboard más adelante).
+        <p className="sub">
+          ¿No abre? Asegurate de que Metabase esté prendido (doble clic en <code>start-metabase.bat</code>).
         </p>
       </section>
       )}

@@ -37,6 +37,22 @@ def _migrar_columnas():
 
 _migrar_columnas()
 
+
+def _nombre_tabla(dataset_id: int) -> str:
+    """Nombre de tabla MySQL para las filas de un dataset."""
+    return f"datos_{dataset_id}"
+
+
+def _cargar_a_mysql(df, dataset_id: int):
+    """Vuelca el DataFrame a una tabla MySQL (para dashboards en Metabase)."""
+    df = df.copy()
+    df.columns = [str(c).strip().replace(" ", "_").lower() for c in df.columns]
+    try:
+        df.to_sql(_nombre_tabla(dataset_id), con=engine,
+                  if_exists="replace", index=False)
+    except Exception as e:
+        print(f"[aviso] no se pudo cargar a MySQL: {e}")
+
 app = FastAPI(title="ShaddAI · core", version="0.2.0")
 
 # Permitir que el frontend (React) llame a este servicio
@@ -98,6 +114,7 @@ async def subir_archivo(file: UploadFile = File(...), db: Session = Depends(get_
     contenido = await file.read()
     dataset = models.Dataset(nombre_archivo=nombre, tipo=tipo)
 
+    df = None
     if tipo == "tabla":
         try:
             df = ingest.leer_tabla(nombre, contenido)
@@ -121,6 +138,10 @@ async def subir_archivo(file: UploadFile = File(...), db: Session = Depends(get_
     with open(ruta, "wb") as f:
         f.write(contenido)
 
+    # Cargar las filas en una tabla MySQL para que Metabase pueda graficarlas
+    if df is not None:
+        _cargar_a_mysql(df, dataset.id)
+
     return {
         "id": dataset.id,
         "nombre_archivo": dataset.nombre_archivo,
@@ -133,6 +154,24 @@ async def subir_archivo(file: UploadFile = File(...), db: Session = Depends(get_
 @app.get("/datasets")
 def listar_datasets(db: Session = Depends(get_db)):
     return db.query(models.Dataset).order_by(models.Dataset.id.desc()).all()
+
+
+@app.post("/datasets/sync-mysql")
+def sincronizar_mysql(db: Session = Depends(get_db)):
+    """Carga en MySQL las filas de todas las tablas ya subidas (para Metabase)."""
+    cargadas = []
+    for ds in db.query(models.Dataset).filter(models.Dataset.tipo == "tabla").all():
+        ruta = os.path.join(UPLOAD_DIR, f"{ds.id}_{ds.nombre_archivo}")
+        if not os.path.exists(ruta):
+            continue
+        try:
+            with open(ruta, "rb") as f:
+                df = ingest.leer_tabla(ds.nombre_archivo, f.read())
+            _cargar_a_mysql(df, ds.id)
+            cargadas.append({"id": ds.id, "tabla": _nombre_tabla(ds.id), "filas": len(df)})
+        except Exception as e:
+            print(f"[aviso] sync dataset {ds.id}: {e}")
+    return {"tablas_cargadas": cargadas}
 
 
 def _get_dataset(dataset_id: int, db: Session) -> models.Dataset:

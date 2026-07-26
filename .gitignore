@@ -1,0 +1,23 @@
+# Secretos y entorno
+.env
+*.env
+!*.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+
+# Node / React
+node_modules/
+dist/
+.vite/
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

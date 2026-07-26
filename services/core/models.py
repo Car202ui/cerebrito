@@ -32,3 +32,20 @@ class Dataset(Base):
     muestra = Column(JSON, nullable=True)        # preview de tablas
     texto = Column(Text, nullable=True)          # contenido de documentos/código
     creado_en = Column(DateTime, default=datetime.utcnow)
+
+
+class Analisis(Base):
+    """Base de conocimiento: análisis/insights que ShaddAI guardó de un archivo.
+
+    Acumula el "conocimiento" del proyecto: cada vez que se guarda un análisis,
+    queda un histórico consultable de qué se estudió y qué concluyó ShaddAI.
+    """
+    __tablename__ = "analisis"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dataset_id = Column(Integer, nullable=True)          # archivo que originó el análisis
+    nombre_archivo = Column(String(255), nullable=True)
+    tipo_archivo = Column(String(20), nullable=True)     # 'tabla' | 'texto'
+    titulo = Column(String(255), nullable=True)          # etiqueta del usuario
+    contenido = Column(Text, nullable=False)             # texto del insight/respuesta
+    creado_en = Column(DateTime, default=datetime.utcnow)

@@ -230,3 +230,48 @@ def preguntar_dataset(dataset_id: int, payload: PreguntaIn, db: Session = Depend
         analytics = _calcular_analytics(_cargar_df(dataset_id, db))
         return {"respuesta": ai.responder_pregunta(payload.pregunta, analytics)}
     return {"respuesta": ai.responder_pregunta_texto(payload.pregunta, ds.texto or "")}
+
+
+# ---------- Base de conocimiento (histórico de análisis) ----------
+class GuardarAnalisisIn(BaseModel):
+    dataset_id: int | None = None
+    titulo: str | None = None
+    contenido: str
+
+
+@app.post("/conocimiento")
+def guardar_analisis(payload: GuardarAnalisisIn, db: Session = Depends(get_db)):
+    """Guarda un análisis/insight en la base de conocimiento."""
+    nombre, tipo = None, None
+    if payload.dataset_id:
+        ds = db.get(models.Dataset, payload.dataset_id)
+        if ds:
+            nombre, tipo = ds.nombre_archivo, ds.tipo
+    registro = models.Analisis(
+        dataset_id=payload.dataset_id,
+        nombre_archivo=nombre,
+        tipo_archivo=tipo,
+        titulo=payload.titulo,
+        contenido=payload.contenido,
+    )
+    db.add(registro)
+    db.commit()
+    db.refresh(registro)
+    return registro
+
+
+@app.get("/conocimiento")
+def listar_conocimiento(db: Session = Depends(get_db)):
+    """Lista todo el conocimiento acumulado (más reciente primero)."""
+    return db.query(models.Analisis).order_by(models.Analisis.id.desc()).all()
+
+
+@app.delete("/conocimiento/{analisis_id}")
+def borrar_analisis(analisis_id: int, db: Session = Depends(get_db)):
+    """Elimina un análisis guardado."""
+    registro = db.get(models.Analisis, analisis_id)
+    if not registro:
+        raise HTTPException(404, "Análisis no encontrado")
+    db.delete(registro)
+    db.commit()
+    return {"ok": True}

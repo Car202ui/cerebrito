@@ -191,3 +191,50 @@ li {
   padding: 0 1rem;
   cursor: pointer;
 }
+
+.btn-guardar {
+  display: block;
+  margin-top: 0.8rem;
+  background: #1f7a4d;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.btn-guardar:hover {
+  background: #26965e;
+}
+
+.conocimiento-item {
+  border: 1px solid #333;
+  border-left: 3px solid #1f7a4d;
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  margin-top: 0.8rem;
+}
+.conocimiento-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+.conocimiento-cuerpo {
+  white-space: pre-wrap;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: #ccc;
+}
+.btn-borrar {
+  background: transparent;
+  color: #d66;
+  border: 1px solid #a44;
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.btn-borrar:hover {
+  background: #3a1212;
+}

@@ -17,8 +17,9 @@ function App() {
   const [pensando, setPensando] = useState(false);
   const [pregunta, setPregunta] = useState("");
   const [respuesta, setRespuesta] = useState("");
+  const [conocimiento, setConocimiento] = useState([]);
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => { cargar(); cargarConocimiento(); }, []);
 
   async function cargar() {
     try {
@@ -28,6 +29,36 @@ function App() {
     } catch {
       setError("No se pudo conectar con el servicio core (¿está corriendo en :8001?)");
     }
+  }
+
+  async function cargarConocimiento() {
+    try {
+      setConocimiento(await fetch(`${CORE}/conocimiento`).then((r) => r.json()));
+    } catch { /* silencioso */ }
+  }
+
+  async function guardarConocimiento(contenido) {
+    try {
+      await fetch(`${CORE}/conocimiento`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataset_id: activo?.id,
+          titulo: activo?.nombre,
+          contenido,
+        }),
+      });
+      await cargarConocimiento();
+    } catch {
+      setError("No se pudo guardar en la base de conocimiento.");
+    }
+  }
+
+  async function borrarConocimiento(id) {
+    try {
+      await fetch(`${CORE}/conocimiento/${id}`, { method: "DELETE" });
+      await cargarConocimiento();
+    } catch { /* silencioso */ }
   }
 
   async function subirArchivo(e) {
@@ -143,7 +174,14 @@ function App() {
             <button className="btn-ia" onClick={pedirInsights} disabled={pensando}>
               🧠 {pensando ? "ShaddAI está pensando…" : "Pedir análisis a ShaddAI"}
             </button>
-            {insights && <div className="ia-respuesta">{insights}</div>}
+            {insights && (
+              <div className="ia-respuesta">
+                {insights}
+                <button className="btn-guardar" onClick={() => guardarConocimiento(insights)}>
+                  💾 Guardar en base de conocimiento
+                </button>
+              </div>
+            )}
             <form onSubmit={preguntar} className="ia-form">
               <input
                 type="text"
@@ -154,7 +192,14 @@ function App() {
               />
               <button type="submit" disabled={pensando}>Preguntar</button>
             </form>
-            {respuesta && <div className="ia-respuesta">{respuesta}</div>}
+            {respuesta && (
+              <div className="ia-respuesta">
+                {respuesta}
+                <button className="btn-guardar" onClick={() => guardarConocimiento(respuesta)}>
+                  💾 Guardar en base de conocimiento
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Vista de TABLA: tarjetas + gráficos */}
@@ -203,6 +248,28 @@ function App() {
           )}
         </section>
       )}
+
+      <section className="card">
+        <h2>🧠 Base de conocimiento ({conocimiento.length})</h2>
+        <p className="hint">Análisis que ShaddAI recordó de tus proyectos.</p>
+        {conocimiento.length === 0 && (
+          <p className="sub">Todavía no guardaste ningún análisis.</p>
+        )}
+        {conocimiento.map((k) => (
+          <div className="conocimiento-item" key={k.id}>
+            <div className="conocimiento-head">
+              <strong>
+                {k.tipo_archivo === "texto" ? "📄" : k.tipo_archivo === "tabla" ? "📊" : "🧠"}{" "}
+                {k.titulo || "Análisis"}
+              </strong>
+              <button className="btn-borrar" onClick={() => borrarConocimiento(k.id)}>
+                Eliminar
+              </button>
+            </div>
+            <div className="conocimiento-cuerpo">{k.contenido}</div>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
